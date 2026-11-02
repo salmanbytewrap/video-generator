@@ -30,6 +30,10 @@ const envSchema = z
     FFPROBE_PATH: z.string().optional(),
     FFMPEG_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
 
+    EMBEDDED_WORKER: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(2),
     WORKER_POLL_MS: z.coerce.number().int().positive().default(1000),
     JOB_LOCK_MS: z.coerce.number().int().positive().default(60 * 1000),

@@ -4,7 +4,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { createRouter } from './router';
 import { ResponseSuccess } from './utils/response';
 
-export function createApp(overrides: Partial<AppDependencies> = {}): Express {
+export function createApp(overrides: Partial<AppDependencies> | AppDependencies = {}): Express {
   const app = express();
   app.use(express.json({ limit: '100kb' }));
 

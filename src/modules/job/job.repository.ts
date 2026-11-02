@@ -90,6 +90,7 @@ export interface JobRepository extends IRepository<Job, CreateJobData> {
   complete(id: string, workerId: string, data: CompleteJobData): Promise<boolean>;
   fail(id: string, workerId: string, error: JobError, retryAt?: Date): Promise<boolean>;
   markCancelled(id: string, workerId: string): Promise<boolean>;
+  release(id: string, workerId: string): Promise<boolean>;
   requeueStale(now?: Date): Promise<{ requeued: number; failed: number }>;
   requestCancel(id: string, userId: string): Promise<Job | null>;
   resetForRetry(id: string, userId: string): Promise<Job | null>;
@@ -239,6 +240,18 @@ export class MongoJobRepository extends BaseRepository<JobSchema, Job, CreateJob
       { _id: id, status: 'processing', lockedBy: workerId },
       {
         $set: { status: 'cancelled', stage: 'cancelled', completedAt: new Date() },
+        $unset: { lockedBy: 1, lockedUntil: 1 },
+      },
+    );
+    return result.modifiedCount === 1;
+  }
+
+  async release(id: string, workerId: string): Promise<boolean> {
+    const result = await this._model.updateOne(
+      { _id: id, status: 'processing', lockedBy: workerId },
+      {
+        $set: { status: 'queued', stage: 'queued', progress: 0, runAfter: new Date() },
+        $inc: { attempts: -1 },
         $unset: { lockedBy: 1, lockedUntil: 1 },
       },
     );
