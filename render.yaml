@@ -1,0 +1,47 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# One Docker web service running the API, the SPA and the embedded worker.
+# Uses MongoDB Atlas for data and Cloudflare R2 (S3 API) for media, since Render's free disk is ephemeral.
+services:
+  - type: web
+    name: clipforge
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: EMBEDDED_WORKER
+        value: "true"
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+
+  # To scale rendering independently, set EMBEDDED_WORKER=false above and enable this worker
+  # (same image and env vars, different command).
+  # - type: worker
+  #   name: clipforge-worker
+  #   runtime: docker
+  #   plan: starter
+  #   dockerCommand: node dist/worker.js
+  #   envVars:
+  #     - fromGroup: clipforge-shared
