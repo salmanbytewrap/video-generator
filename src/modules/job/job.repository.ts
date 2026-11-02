@@ -86,6 +86,8 @@ export interface JobRepository extends IRepository<Job, CreateJobData> {
   listForUser(userId: string, page: number, limit: number): Promise<JobPage>;
   countActiveForUser(userId: string): Promise<number>;
   claimNext(workerId: string, lockMs: number, now?: Date): Promise<Job | null>;
+  claimById(id: string, workerId: string, lockMs: number, now?: Date): Promise<Job | null>;
+  findDispatchable(now?: Date, limit?: number): Promise<Job[]>;
   heartbeat(id: string, workerId: string, lockMs: number, progress?: number, stage?: string): Promise<HeartbeatResult>;
   complete(id: string, workerId: string, data: CompleteJobData): Promise<boolean>;
   fail(id: string, workerId: string, error: JobError, retryAt?: Date): Promise<boolean>;
@@ -166,10 +168,33 @@ export class MongoJobRepository extends BaseRepository<JobSchema, Job, CreateJob
     return this._model.countDocuments({ userId, status: { $in: ACTIVE_STATUSES } });
   }
 
-  async claimNext(workerId: string, lockMs: number, now = new Date()): Promise<Job | null> {
+  claimNext(workerId: string, lockMs: number, now = new Date()): Promise<Job | null> {
+    return this.claim({ status: 'queued', runAfter: { $lte: now } }, workerId, lockMs, now);
+  }
+
+  claimById(id: string, workerId: string, lockMs: number, now = new Date()): Promise<Job | null> {
+    if (!isValidObjectId(id)) return Promise.resolve(null);
+    return this.claim({ _id: id, status: 'queued' }, workerId, lockMs, now);
+  }
+
+  async findDispatchable(now = new Date(), limit = 100): Promise<Job[]> {
+    const docs = await this._model
+      .find({ status: 'queued', runAfter: { $lte: now } })
+      .sort({ runAfter: 1, createdAt: 1 })
+      .limit(limit)
+      .lean<LeanDocument<JobSchema>[]>();
+    return docs.map((doc) => this.toEntity(doc));
+  }
+
+  private async claim(
+    filter: { _id?: string; status: 'queued'; runAfter?: { $lte: Date } },
+    workerId: string,
+    lockMs: number,
+    now: Date,
+  ): Promise<Job | null> {
     const doc = await this._model
       .findOneAndUpdate(
-        { status: 'queued', runAfter: { $lte: now } },
+        filter,
         {
           $set: {
             status: 'processing',

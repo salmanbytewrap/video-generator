@@ -27,6 +27,8 @@ export function createMockJobRepository(): Mocked<JobRepository> {
     listForUser: vi.fn(),
     countActiveForUser: vi.fn(),
     claimNext: vi.fn(),
+    claimById: vi.fn(),
+    findDispatchable: vi.fn().mockResolvedValue([]),
     heartbeat: vi.fn(),
     complete: vi.fn(),
     fail: vi.fn(),

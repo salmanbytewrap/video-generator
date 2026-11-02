@@ -2,6 +2,7 @@ import type { Mocked } from 'vitest';
 import { ZodError } from 'zod';
 import { AssetRepository } from '../../../src/modules/asset';
 import { JobRepository, JobService } from '../../../src/modules/job';
+import { JobDispatcher } from '../../../src/modules/job/job.dispatcher';
 import {
   BadRequestError,
   ConflictError,
@@ -109,6 +110,47 @@ describe('JobService', () => {
 
     it('createJob_WithMalformedIdempotencyKey_ThrowsBadRequest', async () => {
       await expect(service.createJob(USER_ID, input, 'bad key!')).rejects.toBeInstanceOf(BadRequestError);
+    });
+  });
+
+  describe('dispatching to the queue driver', () => {
+    let dispatcher: Mocked<JobDispatcher>;
+
+    beforeEach(() => {
+      dispatcher = { dispatch: vi.fn().mockResolvedValue(undefined), close: vi.fn() };
+      service = new JobService(jobs, assets, createMockStorage(), { maxAttempts: 3, maxActiveJobsPerUser: 2 }, dispatcher);
+    });
+
+    it('createJob_AfterSavingTheJob_DispatchesIt', async () => {
+      await service.createJob(USER_ID, input);
+
+      expect(dispatcher.dispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 'job-1' }));
+    });
+
+    it('createJob_ReturningAnExistingIdempotentJob_DoesNotDispatchAgain', async () => {
+      jobs.findByIdempotencyKey.mockResolvedValue(buildJob({ id: 'job-1' }));
+
+      await service.createJob(USER_ID, input, 'key-123456');
+
+      expect(dispatcher.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('createJob_WhenDispatchFails_StillSucceeds', async () => {
+      dispatcher.dispatch.mockRejectedValue(new Error('redis down'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await expect(service.createJob(USER_ID, input)).resolves.toMatchObject({ created: true });
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('retryJob_AfterResetting_DispatchesTheJob', async () => {
+      jobs.findOneForUser.mockResolvedValue(buildJob({ status: 'failed' }));
+      jobs.resetForRetry.mockResolvedValue(buildJob({ id: 'job-1', status: 'queued', attempts: 0 }));
+
+      await service.retryJob(USER_ID, 'job-1');
+
+      expect(dispatcher.dispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 'job-1', attempts: 0 }));
     });
   });
 

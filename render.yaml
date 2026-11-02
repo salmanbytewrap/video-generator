@@ -15,6 +15,11 @@ services:
         value: "true"
       - key: WORKER_CONCURRENCY
         value: "1"
+      # Set QUEUE_DRIVER=bullmq and REDIS_URL (e.g. Render Key Value or Upstash) to use Redis.
+      - key: QUEUE_DRIVER
+        value: mongo
+      - key: REDIS_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: MONGODB_URI

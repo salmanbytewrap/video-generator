@@ -13,6 +13,17 @@ To run the project locally you need only **two** values in `.env`:
 
 Everything else has a safe default (see `.env.example`).
 
+### Optional: Redis queue (BullMQ)
+
+The default queue polls MongoDB and needs nothing extra. To use Redis instead:
+
+```env
+QUEUE_DRIVER=bullmq
+REDIS_URL=redis://localhost:6379
+```
+
+Start Redis locally with `brew services start redis`. In production use Render Key Value, Upstash or another managed Redis. The URL may contain a password (`redis://:password@host:6379`, or `rediss://` for TLS), so treat it as a secret.
+
 ### Extra secrets for production (optional locally)
 
 Render and Railway disks are wiped on redeploy, so production stores media in S3 or Cloudflare R2:
@@ -69,7 +80,8 @@ video-generator/
 │   ├── container.ts             # Dependency wiring (repositories, storage, services)
 │   ├── config/
 │   │   ├── index.ts             # zod-validated environment config
-│   │   └── database.ts          # connectDatabase / disconnectDatabase
+│   │   ├── database.ts          # connectDatabase / disconnectDatabase
+│   │   └── redis.ts             # BullMQ connection options
 │   ├── middleware/
 │   │   ├── errorHandler.ts      # Maps errors to JSON responses
 │   │   └── security.ts          # helmet CSP, CORS allowlist, rate limits
@@ -99,7 +111,10 @@ video-generator/
 │       │   └── urlImport.service.ts
 │       ├── job/
 │       │   ├── job.*.ts         # model, repository (queue ops), service, controller, routes
-│       │   └── job.worker.ts    # Claim, heartbeat, retry/backoff, stale sweep
+│       │   ├── job.executor.ts  # Runs one job: heartbeat, cancel, retry/backoff (shared by both drivers)
+│       │   ├── job.worker.ts    # QUEUE_DRIVER=mongo: polls MongoDB, stale sweep
+│       │   ├── job.dispatcher.ts# Enqueues job ids to BullMQ (no-op for mongo)
+│       │   └── bullmq.worker.ts # QUEUE_DRIVER=bullmq: BullMQ worker + reconciler
 │       └── generation/
 │           ├── platformPresets.ts   # Instagram / TikTok / YouTube formats
 │           ├── ffmpegCommand.ts     # Builds ffmpeg arguments

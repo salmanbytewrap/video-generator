@@ -3,6 +3,7 @@ import { StorageProvider } from '../../storage';
 import { BadRequestError, ConflictError, NotFoundError, TooManyRequestsError } from '../../utils/AppError';
 import { Asset, AssetRepository } from '../asset';
 import { FIT_MODES, getPreset, PlatformPreset, PLATFORMS, presetsByPlatform } from '../generation/platformPresets';
+import { JobDispatcher, NoopJobDispatcher } from './job.dispatcher';
 import { Job, JobPage, JobRepository } from './job.repository';
 
 export const createJobSchema = z
@@ -82,6 +83,7 @@ export class JobService {
     private readonly assets: AssetRepository,
     private readonly storage: StorageProvider,
     private readonly limits: JobServiceLimits,
+    private readonly dispatcher: JobDispatcher = new NoopJobDispatcher(),
   ) {}
 
   getPresets() {
@@ -118,6 +120,7 @@ export class JobService {
         maxAttempts: this.limits.maxAttempts,
         idempotencyKey: key,
       });
+      await this.dispatch(job);
       return { job: await this.toView(job), created: true };
     } catch (err) {
       if (key && isDuplicateKeyError(err)) {
@@ -148,7 +151,16 @@ export class JobService {
     }
     const reset = await this.jobs.resetForRetry(id, userId);
     if (!reset) throw new ConflictError('Job state changed; refresh and try again');
+    await this.dispatch(reset);
     return this.toView(reset);
+  }
+
+  private async dispatch(job: Job): Promise<void> {
+    try {
+      await this.dispatcher.dispatch(job);
+    } catch (err) {
+      console.warn('job dispatch failed; the reconciler will pick it up', { jobId: job.id, error: (err as Error).message });
+    }
   }
 
   async cancelJob(userId: string, id: string): Promise<JobView> {

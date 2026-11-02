@@ -18,6 +18,7 @@ async function bootstrap() {
     stopping = true;
     server.close(async () => {
       await worker?.stop();
+      await deps.jobDispatcher.close();
       await disconnectDatabase();
       process.exit(0);
     });

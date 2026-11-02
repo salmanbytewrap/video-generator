@@ -4,7 +4,7 @@ Upload a video or image (or paste a product link), pick **Instagram**, **TikTok*
 
 - **API**: Node.js 22, TypeScript, Express 5, MongoDB/Mongoose, zod
 - **Rendering**: FFmpeg / ffprobe (crop or blurred-background fit, trim, silent audio track, Ken Burns for stills, thumbnail)
-- **Queue**: MongoDB-backed job queue with atomic claims, heartbeats, retries with backoff, stale-lock recovery and cancellation
+- **Queue**: two drivers behind one interface, selected with `QUEUE_DRIVER`. `mongo` (the default) polls MongoDB; `bullmq` delivers jobs through Redis with BullMQ. Both have atomic claims, heartbeats, retries with backoff, stale-lock recovery and cancellation
 - **Storage**: local disk with HMAC-signed links, or S3 / Cloudflare R2 with presigned URLs
 - **Web**: React 19 + Vite + React Query, served by the same Express process in production
 - **AI**: captions come from a deterministic **simulated** provider behind a `CaptionGenerator` interface (no API keys needed). See [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md).
@@ -41,6 +41,8 @@ npm run web:dev
 ```
 
 Open http://localhost:5173, create an account, upload a clip and generate.
+
+To use Redis and BullMQ instead of MongoDB polling, start Redis (`brew services start redis`) and run `QUEUE_DRIVER=bullmq REDIS_URL=redis://localhost:6379 EMBEDDED_WORKER=true npm run dev`.
 
 To run the worker as a separate process instead, leave `EMBEDDED_WORKER=false` and run `npm run dev:worker` in a third terminal. You can run as many workers as you like; claims are atomic.
 
@@ -83,6 +85,8 @@ Every variable is validated at startup by zod (`src/config/index.ts`); the app r
 | `JWT_SECRET`               | (required)              | Signs auth tokens and local file links                       |
 | `STORAGE_DRIVER`           | `local`                 | `local` or `s3`                                              |
 | `EMBEDDED_WORKER`          | `false`                 | Run the worker inside the API process                        |
+| `QUEUE_DRIVER`             | `mongo`                 | `mongo` (poll MongoDB) or `bullmq` (Redis)                   |
+| `REDIS_URL`                | (none)                  | Required when `QUEUE_DRIVER=bullmq`, e.g. `redis://localhost:6379` |
 | `WORKER_CONCURRENCY`       | `2`                     | Parallel FFmpeg jobs per worker                              |
 | `MAX_ATTEMPTS`             | `3`                     | Attempts before a job is marked failed                       |
 | `MAX_ACTIVE_JOBS_PER_USER` | `3`                     | Queued + processing jobs allowed per user                    |
@@ -121,11 +125,11 @@ npm run test:coverage    # with coverage (80% thresholds enforced)
 npm run typecheck
 ```
 
-There are 237 tests across 23 files, using Vitest with an in-memory MongoDB (pinned to 8.2.1). They cover:
+There are 260 tests across 25 files, using Vitest with an in-memory MongoDB (pinned to 8.2.1). The BullMQ integration tests start a throwaway `redis-server` (or use `REDIS_TEST_URL`) and are skipped if Redis isn't installed. They cover:
 - the preset table and FFmpeg argument builder,
 - a real FFmpeg render of a generated sample,
 - the job queue's state transitions, locking and retry logic,
-- the worker loop,
+- the worker loop for both queue drivers, including BullMQ on a real Redis (dispatch dedupe, delayed retries, reconciler, cancelled jobs),
 - the asset and job HTTP APIs,
 - signed links and range requests,
 - the SSRF guards,

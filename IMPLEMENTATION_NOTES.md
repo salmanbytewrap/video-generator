@@ -63,7 +63,12 @@ The code is organised in feature modules (`auth`, `user`, `asset`, `job`, `gener
 
 ## Trade-offs
 
-- **MongoDB as the queue instead of Redis/BullMQ.** It means one fewer service to run and deploy, the job record *is* the queue entry so status can't drift, and it is easy to inspect. The cost is polling (about 1 s by default) and lower throughput than Redis. That is irrelevant at this scale because an FFmpeg render takes seconds. The queue sits behind `JobRepository`, so swapping in BullMQ or SQS later only touches the repository and worker.
+- **Two queue drivers: MongoDB by default, BullMQ on Redis as an option.** The MongoDB driver means one fewer service to run, the job record *is* the queue entry so status can't drift, and it is easy to inspect. Its costs are polling (about 1 s by default) and lower throughput. `QUEUE_DRIVER=bullmq` delivers jobs immediately through Redis. In both drivers, MongoDB stays the source of truth:
+  - Each BullMQ message carries only the job ID and has the ID `{jobId}-a{attempt}`, so dispatching the same attempt twice is a no-op.
+  - The worker claims the MongoDB job atomically before running it (`claimById`), so duplicate or late deliveries, or messages for cancelled jobs, do nothing.
+  - Retries are re-dispatched as delayed messages.
+  - A reconciler runs every `QUEUE_RECONCILE_MS`. It recovers stale locks and re-dispatches any runnable queued job, which covers a failed `queue.add` after the MongoDB insert (the dual-write problem) and a Redis flush.
+  - Job execution (heartbeat, cancel, shutdown release, error classification) lives in a shared `JobExecutor`, so both drivers behave the same.
 - **Embedded worker by default in deployment.** A single container is the cheapest option. Rendering competes with the API for CPU, so `WORKER_CONCURRENCY=1` is set on small instances. The same image runs as a dedicated worker (`node dist/worker.js`) when you need to scale.
 - **Polling, not WebSockets or SSE.** Polling every 2 s only while a job is active is simple, works behind every proxy, and needs no sticky sessions. SSE would be the next step if many jobs run concurrently.
 - **Tokens in `localStorage`.** This is simple and works with the existing `idToken` header convention. The downside is exposure to XSS, which the strict CSP (`script-src 'self'`, no inline scripts) and React's escaping mitigate. An httpOnly, SameSite cookie with CSRF protection would be stronger.
@@ -73,7 +78,7 @@ The code is organised in feature modules (`auth`, `user`, `asset`, `job`, `gener
 
 ## Testing
 
-There are 237 tests. The pure logic is unit-tested: presets, FFmpeg argument building, progress parsing, error classification, captions, file sniffing, OpenGraph parsing, the IP blocklist and the backoff calculation. Integration tests run against an in-memory MongoDB and cover:
+There are 260 tests. The pure logic is unit-tested: presets, FFmpeg argument building, progress parsing, error classification, captions, file sniffing, OpenGraph parsing, the IP blocklist and the backoff calculation. Integration tests run against an in-memory MongoDB and cover:
 - the queue operations: claim races, heartbeat, stale-lock sweep, idempotency races,
 - the worker loop, with fake processors for success, retry, permanent failure, cancellation and shutdown,
 - the full HTTP API, including signed file links and range requests.
@@ -85,7 +90,7 @@ At least one test renders a real video with FFmpeg and checks the output dimensi
 1. **Real AI captions**: an OpenAI or Anthropic `CaptionGenerator` that uses the page title and a few sampled frames, with a timeout, a cost cap, and fallback to the simulated provider.
 2. **Smart reframing**: face and saliency detection (for example MediaPipe) to drive the crop window across a clip, plus scene-cut detection for highlights.
 3. **More output**: burned-in subtitles from speech-to-text, a brand watermark or logo, and several formats from one upload in a single batch.
-4. **Scale**: move to BullMQ or SQS once throughput needs it, use autoscaling worker pools, and add GPU or hardware encoding.
+4. **Scale**: switch on the BullMQ driver, autoscale workers on queue depth, add a Bull Board dashboard, and add GPU or hardware encoding.
 5. **Uploads**: direct-to-S3 multipart uploads with presigned URLs, so large files bypass the API.
 6. **Observability**: structured logs with job and request IDs, metrics for queue depth, render time and failure rate, and alerting.
 7. **Product**: social account OAuth for direct publishing, scheduled posts, teams, and usage quotas or billing.

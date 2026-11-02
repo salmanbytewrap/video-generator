@@ -5,13 +5,15 @@ import { startWorkerRuntime } from './workerRuntime';
 
 async function bootstrap() {
   await connectDatabase(config.MONGODB_URI);
-  const runtime = startWorkerRuntime(createDependencies());
+  const deps = createDependencies();
+  const runtime = startWorkerRuntime(deps);
 
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     await runtime.stop();
+    await deps.jobDispatcher.close();
     await disconnectDatabase();
     process.exit(0);
   };

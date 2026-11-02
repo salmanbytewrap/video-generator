@@ -30,6 +30,36 @@ describe('MongoJobRepository', () => {
     expect(claimed.every((j) => j!.status === 'processing' && j!.attempts === 1)).toBe(true);
   });
 
+  it('claimById_WithConcurrentDeliveries_ClaimsTheJobOnce', async () => {
+    const job = await repo.create(data());
+
+    const claims = await Promise.all(Array.from({ length: 5 }, (_, i) => repo.claimById(job.id, `w${i}`, LOCK)));
+
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(claims.find(Boolean)).toMatchObject({ id: job.id, status: 'processing', attempts: 1 });
+  });
+
+  it('claimById_WithNonQueuedOrInvalidJob_ReturnsNull', async () => {
+    const job = await repo.create(data());
+    await repo.requestCancel(job.id, USER_ID);
+
+    expect(await repo.claimById(job.id, 'w1', LOCK)).toBeNull();
+    expect(await repo.claimById('not-an-id', 'w1', LOCK)).toBeNull();
+  });
+
+  it('findDispatchable_ReturnsOnlyRunnableQueuedJobsOldestFirst', async () => {
+    const first = await repo.create(data());
+    const second = await repo.create(data());
+    const later = await repo.create(data());
+    const running = await repo.create(data());
+    await JobModel.updateOne({ _id: later.id }, { runAfter: new Date(Date.now() + 60_000) });
+    await repo.claimById(running.id, 'w1', LOCK);
+
+    const ids = (await repo.findDispatchable()).map((j) => j.id);
+
+    expect(ids).toEqual([first.id, second.id]);
+  });
+
   it('claimNext_SkipsJobsScheduledForLater', async () => {
     const job = await repo.create(data());
     await JobModel.updateOne({ _id: job.id }, { runAfter: new Date(Date.now() + 60_000) });

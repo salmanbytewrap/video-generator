@@ -31,6 +31,14 @@ const envSchema = z
     FFMPEG_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
     URL_IMPORT_TIMEOUT_MS: z.coerce.number().int().positive().default(60 * 1000),
 
+    QUEUE_DRIVER: z.enum(['mongo', 'bullmq']).default('mongo'),
+    REDIS_URL: z.string().url().optional(),
+    BULLMQ_QUEUE_NAME: z
+      .string()
+      .regex(/^[\w-]+$/, 'BULLMQ_QUEUE_NAME may only contain letters, digits, _ and -')
+      .default('video-generation'),
+    QUEUE_RECONCILE_MS: z.coerce.number().int().positive().default(15 * 1000),
+
     EMBEDDED_WORKER: z
       .enum(['true', 'false'])
       .default('false')
@@ -43,6 +51,9 @@ const envSchema = z
     OUTPUT_TTL_DAYS: z.coerce.number().positive().default(7),
   })
   .superRefine((env, ctx) => {
+    if (env.QUEUE_DRIVER === 'bullmq' && !env.REDIS_URL) {
+      ctx.addIssue({ code: 'custom', path: ['REDIS_URL'], message: 'REDIS_URL is required when QUEUE_DRIVER=bullmq' });
+    }
     if (env.STORAGE_DRIVER !== 's3') return;
     for (const key of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
       if (!env[key]) {
