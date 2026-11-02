@@ -1,11 +1,12 @@
-import { Router } from 'express';
+import { RequestHandler, Router } from 'express';
 import { decodeToken } from './auth.middleware';
 import { AuthController } from './auth.controller';
 
-export function createAuthRouter(controller: AuthController): Router {
+export function createAuthRouter(controller: AuthController, rateLimit?: RequestHandler): Router {
   const router = Router();
-  router.post('/register', controller.register);
-  router.post('/login', controller.login);
+  const limited = rateLimit ? [rateLimit] : [];
+  router.post('/register', ...limited, controller.register);
+  router.post('/login', ...limited, controller.login);
   router.get('/me', decodeToken, controller.me);
   return router;
 }
