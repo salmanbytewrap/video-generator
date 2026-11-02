@@ -97,6 +97,7 @@ export const api = {
 
   presets: () => request<PresetCatalog>('/jobs/presets'),
   uploadFile,
+  importUrl: (url: string) => request<Asset>('/assets/url', { method: 'POST', body: { url } }),
 
   createJob: (input: CreateJobInput, idempotencyKey: string) =>
     request<Job>('/jobs', { method: 'POST', body: input, headers: { 'Idempotency-Key': idempotencyKey } }),

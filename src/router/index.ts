@@ -10,13 +10,13 @@ import { LocalStorage } from '../storage';
 import { createFilesRouter } from '../storage/files.routes';
 
 export function createRouter(deps: AppDependencies, limiters: RateLimiters = {}): Router {
-  const { assetService, jobService } = createServices(deps);
+  const { assetService, urlImportService, jobService } = createServices(deps);
   const router = Router();
   router.use('/auth', createAuthModule(deps.userRepository, limiters.auth));
   router.use('/users', createUserModule(deps.userRepository));
   router.use(
     '/assets',
-    createAssetModule(assetService, { maxUploadBytes: config.UPLOAD_MAX_BYTES, uploadRateLimit: limiters.upload }),
+    createAssetModule(assetService, urlImportService, { maxUploadBytes: config.UPLOAD_MAX_BYTES, uploadRateLimit: limiters.upload }),
   );
   router.use('/jobs', createJobModule(jobService, { createRateLimit: limiters.createJob }));
   if (deps.storage instanceof LocalStorage) {

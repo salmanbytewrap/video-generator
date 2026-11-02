@@ -24,6 +24,7 @@ export function createAssetRouter(controller: AssetController, options: AssetRou
   const uploadMiddleware = [upload.single('file')];
   if (options.uploadRateLimit) uploadMiddleware.unshift(options.uploadRateLimit);
   router.post('/', ...uploadMiddleware, controller.upload);
+  router.post('/url', ...(options.uploadRateLimit ? [options.uploadRateLimit] : []), controller.importUrl);
   router.get('/:id', controller.getById);
   return router;
 }

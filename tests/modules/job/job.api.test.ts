@@ -1,4 +1,7 @@
+import { readFile } from 'fs/promises';
+import http from 'http';
 import mongoose from 'mongoose';
+import { AddressInfo } from 'net';
 import request from 'supertest';
 import { createApp } from '../../../src/app';
 import { JobModel } from '../../../src/modules/job/job.model';
@@ -89,6 +92,56 @@ describe('Assets and Jobs API', () => {
 
       expect((await request(app).get(`/api/assets/${asset.id}`).set('idToken', owner)).status).toBe(200);
       expect((await request(app).get(`/api/assets/${asset.id}`).set('idToken', other)).status).toBe(404);
+    });
+  });
+
+  describe('POST /api/assets/url', () => {
+    let mediaServer: http.Server;
+    let base: string;
+
+    beforeAll(async () => {
+      const png = await readFile(imagePath);
+      mediaServer = http.createServer((req, res) => {
+        if (req.url === '/product') {
+          res.writeHead(200, { 'content-type': 'text/html' });
+          res.end('<meta property="og:title" content="Trail Shoe"><meta property="og:image" content="/photo.png">');
+        } else {
+          res.writeHead(200, { 'content-type': 'image/png' });
+          res.end(png);
+        }
+      });
+      await new Promise<void>((resolve) => mediaServer.listen(0, '127.0.0.1', resolve));
+      base = `http://127.0.0.1:${(mediaServer.address() as AddressInfo).port}`;
+    });
+
+    afterAll(() => new Promise((resolve) => mediaServer.close(resolve)));
+
+    it('imports the OpenGraph image from a product page', async () => {
+      const token = await register();
+      const localApp = createApp({ allowPrivateNetworkImports: true });
+
+      const res = await request(localApp).post('/api/assets/url').set('idToken', token).send({ url: `${base}/product` });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data).toMatchObject({
+        kind: 'image',
+        mimeType: 'image/png',
+        source: 'url',
+        sourceUrl: `${base}/product`,
+        title: 'Trail Shoe',
+      });
+    });
+
+    it('blocks private network URLs by default', async () => {
+      const token = await register();
+
+      const res = await request(app)
+        .post('/api/assets/url')
+        .set('idToken', token)
+        .send({ url: 'http://169.254.169.254/latest/meta-data/' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('URL points to a private or reserved network address');
     });
   });
 

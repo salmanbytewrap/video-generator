@@ -1,4 +1,4 @@
-import { DragEvent, useEffect, useRef, useState } from 'react';
+import { DragEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../api';
@@ -8,7 +8,44 @@ import type { Asset, FitMode, Platform, Preset } from '../types';
 
 const ACCEPT = 'video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp';
 
+function UrlImport({ onAsset }: { onAsset: (asset: Asset | null) => void }) {
+  const [url, setUrl] = useState('');
+  const importUrl = useMutation({
+    mutationFn: () => api.importUrl(url.trim()),
+    onMutate: () => onAsset(null),
+    onSuccess: onAsset,
+  });
+
+  return (
+    <form
+      className="stack small-gap"
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        importUrl.mutate();
+      }}
+    >
+      <div className="row">
+        <input
+          type="url"
+          className="grow"
+          placeholder="https://shop.example.com/product or a direct .mp4/.jpg link"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          required
+          maxLength={2048}
+        />
+        <button className="btn primary" disabled={importUrl.isPending}>
+          {importUrl.isPending ? 'Fetching…' : 'Import'}
+        </button>
+      </div>
+      <small className="muted">Product pages use their preview video or image (OpenGraph).</small>
+      {importUrl.error && <p className="error">{importUrl.error.message}</p>}
+    </form>
+  );
+}
+
 function UploadStep({ asset, onAsset }: { asset: Asset | null; onAsset: (asset: Asset | null) => void }) {
+  const [mode, setMode] = useState<'file' | 'url'>('file');
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -41,46 +78,58 @@ function UploadStep({ asset, onAsset }: { asset: Asset | null; onAsset: (asset: 
   return (
     <section className="card">
       <h2>1. Source media</h2>
-      <div
-        className={`dropzone${dragging ? ' dragging' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPT}
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void upload(file);
-            e.target.value = '';
-          }}
-        />
-        {progress !== null ? (
-          <div className="stack">
-            <span>Uploading… {Math.round(progress * 100)}%</span>
-            <div className="progress">
-              <div style={{ width: `${progress * 100}%` }} />
-            </div>
-          </div>
-        ) : (
-          <span>
-            <strong>Drop a video or image</strong> or click to browse
-            <br />
-            <small className="muted">MP4, MOV, WebM, JPG, PNG or WebP</small>
-          </span>
-        )}
+      <div className="tabs">
+        <button type="button" className={mode === 'file' ? 'tab active' : 'tab'} onClick={() => setMode('file')}>
+          Upload file
+        </button>
+        <button type="button" className={mode === 'url' ? 'tab active' : 'tab'} onClick={() => setMode('url')}>
+          Paste a link
+        </button>
       </div>
-      {error && <p className="error">{error}</p>}
+      {mode === 'url' ? (
+        <UrlImport onAsset={onAsset} />
+      ) : (
+        <div
+          className={`dropzone${dragging ? ' dragging' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ACCEPT}
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void upload(file);
+              e.target.value = '';
+            }}
+          />
+          {progress !== null ? (
+            <div className="stack">
+              <span>Uploading… {Math.round(progress * 100)}%</span>
+              <div className="progress">
+                <div style={{ width: `${progress * 100}%` }} />
+              </div>
+            </div>
+          ) : (
+            <span>
+              <strong>Drop a video or image</strong> or click to browse
+              <br />
+              <small className="muted">MP4, MOV, WebM, JPG, PNG or WebP</small>
+            </span>
+          )}
+        </div>
+      )}
+      {mode === 'file' && error && <p className="error">{error}</p>}
       {asset && (
         <div className="asset-summary">
           <div className="asset-thumb">

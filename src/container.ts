@@ -1,5 +1,5 @@
 import config from './config';
-import { AssetRepository, AssetService, MongoAssetRepository } from './modules/asset';
+import { AssetRepository, AssetService, MongoAssetRepository, UrlImportService } from './modules/asset';
 import { probeMedia, ProbeFn } from './modules/generation/ffprobe';
 import { JobRepository, JobService, MongoJobRepository } from './modules/job';
 import { MongoUserRepository, UserRepository } from './modules/user';
@@ -11,10 +11,13 @@ export interface AppDependencies {
   jobRepository: JobRepository;
   storage: StorageProvider;
   probe: ProbeFn;
+  /** Only tests set this, to import from a local HTTP server. */
+  allowPrivateNetworkImports: boolean;
 }
 
 export interface Services {
   assetService: AssetService;
+  urlImportService: UrlImportService;
   jobService: JobService;
 }
 
@@ -25,14 +28,21 @@ export function createDependencies(overrides: Partial<AppDependencies> = {}): Ap
     jobRepository: overrides.jobRepository ?? new MongoJobRepository(),
     storage: overrides.storage ?? createStorage(),
     probe: overrides.probe ?? probeMedia,
+    allowPrivateNetworkImports: overrides.allowPrivateNetworkImports ?? false,
   };
 }
 
 export function createServices(deps: AppDependencies): Services {
+  const assetService = new AssetService(deps.assetRepository, deps.storage, deps.probe, {
+    maxVideoSeconds: config.MAX_VIDEO_SECONDS,
+    ttlDays: config.OUTPUT_TTL_DAYS,
+  });
   return {
-    assetService: new AssetService(deps.assetRepository, deps.storage, deps.probe, {
-      maxVideoSeconds: config.MAX_VIDEO_SECONDS,
-      ttlDays: config.OUTPUT_TTL_DAYS,
+    assetService,
+    urlImportService: new UrlImportService(assetService, {
+      maxMediaBytes: config.UPLOAD_MAX_BYTES,
+      timeoutMs: config.URL_IMPORT_TIMEOUT_MS,
+      allowPrivateNetwork: deps.allowPrivateNetworkImports,
     }),
     jobService: new JobService(deps.jobRepository, deps.assetRepository, deps.storage, {
       maxAttempts: config.MAX_ATTEMPTS,

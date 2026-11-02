@@ -97,8 +97,8 @@ describe('Users API', () => {
     expect(patch.status).toBe(404);
   });
 
-  it('unknown route returns 404', async () => {
-    const res = await request(app).get('/nope');
+  it('unknown API route returns 404', async () => {
+    const res = await request(app).get('/api/nope');
 
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);

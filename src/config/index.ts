@@ -29,6 +29,7 @@ const envSchema = z
     FFMPEG_PATH: z.string().optional(),
     FFPROBE_PATH: z.string().optional(),
     FFMPEG_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
+    URL_IMPORT_TIMEOUT_MS: z.coerce.number().int().positive().default(60 * 1000),
 
     EMBEDDED_WORKER: z
       .enum(['true', 'false'])
