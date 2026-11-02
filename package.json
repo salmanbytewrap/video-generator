@@ -12,7 +12,10 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "worker": "node dist/worker.js",
-    "dev:worker": "ts-node-dev --respawn --transpile-only src/worker.ts"
+    "dev:worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "build:all": "npm run build && npm run web:build"
   },
   "keywords": [],
   "author": "",
