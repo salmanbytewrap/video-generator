@@ -1,5 +1,5 @@
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import ffmpegStatic from 'ffmpeg-static';
-import ffprobeStatic from 'ffprobe-static';
 import config from '../../config';
 
 export function ffmpegPath(): string {
@@ -9,5 +9,5 @@ export function ffmpegPath(): string {
 }
 
 export function ffprobePath(): string {
-  return config.FFPROBE_PATH ?? ffprobeStatic.path;
+  return config.FFPROBE_PATH ?? ffprobeInstaller.path;
 }
